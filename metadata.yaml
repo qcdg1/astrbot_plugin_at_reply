@@ -1,0 +1,6 @@
+name: astrbot_plugin_at_reply
+display_name: 勿cue
+desc: 被@时随机回复一句话，不走 LLM。支持群白名单、冷却、关键词放行和喷子模式。
+version: v1.0.0
+author: qcdg
+repo: https://github.com/qcdg1/astrbot_plugin_at_reply

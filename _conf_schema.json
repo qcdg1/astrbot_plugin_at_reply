@@ -1,0 +1,54 @@
+{
+  "reply_pool": {
+    "description": "被@时的随机回复候选列表",
+    "type": "list",
+    "default": ["厉不厉害你机哥"],
+    "hint": "每次被@会从列表里随机选一条发送"
+  },
+  "cooldown_seconds": {
+    "description": "回复冷却时间（秒）",
+    "type": "int",
+    "default": 0,
+    "hint": "0 表示无冷却。冷却期间收到@不回复也不拦截"
+  },
+  "whitelist_enabled": {
+    "description": "是否启用群号白名单",
+    "type": "bool",
+    "default": false
+  },
+  "group_whitelist": {
+    "description": "群号白名单",
+    "type": "list",
+    "default": [],
+    "hint": "仅当 whitelist_enabled 为 true 时生效，填入群号（字符串）"
+  },
+  "keyword": {
+    "description": "关键词放行",
+    "type": "string",
+    "default": "",
+    "hint": "被@后紧跟此关键词时，不随机回复，正常交给 LLM 处理"
+  },
+  "troll_pool": {
+    "description": "喷子模式回复候选列表",
+    "type": "list",
+    "default": ["你是不是找骂", "再@我试试", "烦不烦"],
+    "hint": "触发喷子模式后从列表随机选一条"
+  },
+  "troll_window_seconds": {
+    "description": "喷子计数时间窗口（秒）",
+    "type": "int",
+    "default": 60,
+    "hint": "在此窗口内被同一人@达到阈值即触发喷子模式"
+  },
+  "troll_threshold": {
+    "description": "触发喷子模式的@次数阈值",
+    "type": "int",
+    "default": 5
+  },
+  "troll_duration_seconds": {
+    "description": "喷子持续时间（秒）",
+    "type": "int",
+    "default": 120,
+    "hint": "喷子模式触发后，该用户在此时长内每次@都会被喷。0 表示触发一次只喷一次"
+  }
+}
