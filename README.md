@@ -1,4 +1,4 @@
-# 爷就是人机 (At Reply)
+# 勿cue (At Reply)
 
 一个 AstrBot 插件：被 @ 时不再走 LLM，而是从预设的回复池里随机抽一句发出去。
 
