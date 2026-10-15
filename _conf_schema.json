@@ -50,5 +50,17 @@
     "type": "int",
     "default": 120,
     "hint": "喷子模式触发后，该用户在此时长内每次@都会被喷。0 表示触发一次只喷一次"
+  },
+  "block_quote_without_at": {
+    "description": "屏蔽【引用bot消息且未@bot】的回复",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后：用户引用（回复）了 bot 发送的消息，但回复内容里没有 @ bot 时，bot 不再思考、也不再回复"
+  },
+  "block_quote_with_at": {
+    "description": "屏蔽【引用bot消息且@了bot】的回复",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后：用户引用（回复）了 bot 发送的消息，且回复内容里又 @ 了 bot 时，bot 不再思考、也不再回复"
   }
 }

@@ -12,12 +12,12 @@ from astrbot.api import logger
 @register(
     "astrbot_plugin_at_reply",
     "your_name",
-    "被@时随机回复，不走 LLM。支持群白名单、冷却、关键词放行和喷子模式。",
-    "1.0.4",
+    "被@时随机回复，不走 LLM。支持群白名单、冷却、关键词放行、喷子模式和引用屏蔽。",
+    "1.0.5",
     "https://github.com/your_name/astrbot_plugin_at_reply",
 )
 class AtReplyPlugin(Star):
-    """被@时随机回复，不走 LLM；支持白名单、冷却、关键词放行和喷子模式。"""
+    """被@时随机回复，不走 LLM；支持白名单、冷却、关键词放行、喷子模式和引用屏蔽。"""
 
     def __init__(self, context: Context, config: dict | None = None):
         super().__init__(context)
@@ -34,6 +34,14 @@ class AtReplyPlugin(Star):
         self.troll_threshold: int = self.config.get("troll_threshold", 5)
         self.troll_duration: int = self.config.get("troll_duration_seconds", 120)
 
+        # ---- 新增：引用（回复）bot 消息时的屏蔽开关 ----
+        # 开关一：引用 bot 消息，但回复内容里没有 @ bot → 屏蔽（不思考、不回复）
+        self.block_quote_without_at: bool = self.config.get(
+            "block_quote_without_at", False
+        )
+        # 开关二：引用 bot 消息，且回复内容里 @ 了 bot → 屏蔽（不思考、不回复）
+        self.block_quote_with_at: bool = self.config.get("block_quote_with_at", False)
+
         # ---- 运行时状态 ----
         self.cooldown_map: Dict[str, float] = {}
         # (group_id, user_id) -> [时间戳列表]，用于窗口内计数
@@ -45,7 +53,22 @@ class AtReplyPlugin(Star):
             f"[AtReply] 加载完成 | 回复池{len(self.reply_pool)}条 | "
             f"冷却{self.cooldown_seconds}s | 白名单{'开启' if self.whitelist_enabled else '关闭'} | "
             f"关键词='{self.keyword}' | 喷子阈值{self.troll_threshold}次/{self.troll_window}s | "
-            f"喷子持续{self.troll_duration}s"
+            f"喷子持续{self.troll_duration}s | "
+            f"屏蔽[引用无@]:{'开' if self.block_quote_without_at else '关'} | "
+            f"屏蔽[引用有@]:{'开' if self.block_quote_with_at else '关'}"
+        )
+
+        # ---- 配置自检：打印实际读到的配置来源与生效内容 ----
+        # 用于排查「WebUI 里配了但没生效」「插件更新后配置被重置」这类问题。
+        config_path = getattr(self.config, "config_path", None)
+        logger.info(
+            "[AtReply] 配置来源: "
+            + (str(config_path) if config_path else "（未提供配置文件，使用内置默认值）")
+        )
+        logger.info(
+            f"[AtReply] 当前生效 | 回复池({len(self.reply_pool)}条): {self.reply_pool} | "
+            f"关键词: '{self.keyword}' | 白名单: "
+            f"{self.group_whitelist if self.whitelist_enabled else '未启用'}"
         )
 
     # ------------------------------------------------------------------
@@ -57,6 +80,29 @@ class AtReplyPlugin(Star):
             if isinstance(seg, Comp.At) and str(seg.qq) == bot_id:
                 return True
         return False
+
+    def _is_quote_bot(self, event: AstrMessageEvent) -> bool:
+        """当前消息是否引用（回复）了 bot 自己发送的消息。
+
+        判定依据与 AstrBot 核心一致：消息链里存在 Reply 组件，
+        且其 sender_id == 机器人自身 ID。同时兼容已废弃的 qq 字段。
+        """
+        bot_id = str(event.get_self_id())
+        for seg in event.get_messages():
+            if isinstance(seg, Comp.Reply):
+                sender_id = getattr(seg, "sender_id", None)
+                if sender_id is not None and str(sender_id) == bot_id:
+                    return True
+                qq = getattr(seg, "qq", None)
+                if qq and str(qq) == bot_id:
+                    return True
+        return False
+
+    @staticmethod
+    def _block_event(event: AstrMessageEvent):
+        """屏蔽当前事件：禁止调用 LLM，并终止事件继续传播。"""
+        event.should_call_llm(False)
+        event.stop_event()
 
     def _text_after_mention(self, event: AstrMessageEvent) -> str:
         bot_id = str(event.get_self_id())
@@ -113,7 +159,36 @@ class AtReplyPlugin(Star):
     # ------------------------------------------------------------------
     @filter.event_message_type(filter.EventMessageType.ALL, priority=maxsize)
     async def on_group_message(self, event: AstrMessageEvent):
-        if not self._is_bot_mentioned(event):
+        is_quote_bot = self._is_quote_bot(event)
+        is_mentioned = self._is_bot_mentioned(event)
+
+        # ------------------------------------------------------------------
+        # 新增：引用（回复）bot 消息时的屏蔽
+        # ------------------------------------------------------------------
+        if is_quote_bot:
+            if is_mentioned:
+                # 引用了 bot 的消息，同时回复内容里 @ 了 bot
+                if self.block_quote_with_at:
+                    logger.info(
+                        f"[AtReply] 引用bot消息且@了bot → 已屏蔽 | 群{event.get_group_id()} "
+                        f"用户{event.get_sender_id()}"
+                    )
+                    self._block_event(event)
+                    return
+                # 未开启屏蔽 → 继续走下面原有的 @ 处理流程
+            else:
+                # 引用了 bot 的消息，但回复内容里没有 @ bot
+                if self.block_quote_without_at:
+                    logger.info(
+                        f"[AtReply] 引用bot消息但未@bot → 已屏蔽 | 群{event.get_group_id()} "
+                        f"用户{event.get_sender_id()}"
+                    )
+                    self._block_event(event)
+                    return
+                # 未开启屏蔽 → 保持原行为（放行给 LLM）
+                return
+
+        if not is_mentioned:
             return
 
         logger.info("[AtReply] 检测到@机器人")
